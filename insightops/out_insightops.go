@@ -49,7 +49,7 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		max_retries = "3"
 	}
 	conf := &tls.Config{}
-	address := fmt.Sprintf("%s.data.logs.insight.rapid7.com", region)
+	address := fmt.Sprintf("%s.data.logs.insight.rapid7.com:%s", region, port)
 	conn, err := tls.Dial(protocol, address, conf)
 	if err != nil {
 		log.Println(err)
