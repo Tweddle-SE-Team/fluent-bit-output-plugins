@@ -9,7 +9,7 @@ script:
  - for plugin in *; do
       cd $plugin;
       go get ./...;
-      go build -buildmode=c-shared -o /tmp/out_$plugin.so out_$plugin.go;
+      go build -buildmode=c-shared -o /tmp/builds/out_$plugin.so out_$plugin.go;
       cd ..;
    done
 
