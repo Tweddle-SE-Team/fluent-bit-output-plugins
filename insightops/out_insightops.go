@@ -14,7 +14,7 @@ import (
 
 type InsightOPSContext struct {
 	Connection *tls.Conn
-	Token      string
+	Token      []byte
 	Retries    int
 }
 
@@ -63,7 +63,7 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 	}
 	context := &InsightOPSContext{
 		Connection: conn,
-		Token:      token,
+		Token:      []byte(fmt.Sprintf("%s ", token)),
 		Retries:    retries,
 	}
 	output.FLBPluginSetContext(plugin, unsafe.Pointer(context))
@@ -90,7 +90,7 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 			log.Println("Couldn't convert record to JSON: ", err)
 		}
 		for retry := 1; retry <= (*context).Retries; retry++ {
-			_, err := (*context).Connection.Write(data)
+			_, err := (*context).Connection.Write(append((*context).Token, data...))
 			if err != nil {
 				log.Printf("Attempt %d: %v", retry, err)
 				continue
