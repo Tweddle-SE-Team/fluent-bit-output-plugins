@@ -2,19 +2,25 @@ package main
 
 import (
 	"C"
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"github.com/fluent/fluent-bit-go/output"
+	"io/ioutil"
 	"log"
+	"os"
+	"regexp"
 	"strconv"
 	"unsafe"
 )
 
 type InsightOPSContext struct {
-	Connection *tls.Conn
-	Token      []byte
-	Retries    int
+	Connection  *tls.Conn
+	Tokens      map[string]string
+	Retries     int
+	TagPosition int
+	TagRegex    *regexp.Regexp
 }
 
 var (
@@ -32,13 +38,31 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 	region := output.FLBPluginConfigKey(plugin, "region")
 	protocol := output.FLBPluginConfigKey(plugin, "protocol")
 	max_retries := output.FLBPluginConfigKey(plugin, "max_retries")
-	token := output.FLBPluginConfigKey(plugin, "token")
+	tag_regex := output.FLBPluginConfigKey(plugin, "tag_regex")
+	tag_key := output.FLBPluginConfigKey(plugin, "tag_key")
+	path := output.FLBPluginConfigKey(plugin, "path")
 	if region == "" {
-		log.Println("[out_syslog] ERROR: Region is required")
+		log.Println("[error] [out_syslog] Region is required")
 		return output.FLB_ERROR
 	}
-	if token == "" {
-		log.Println("[out_syslog] ERROR: Token is required")
+	if path == "" {
+		log.Println("[error] [out_syslog] Tokens config path is required")
+		return output.FLB_ERROR
+	}
+	regex, tag_position, err := wordPositionAtRegex(tag_regex, tag_key)
+	if err != nil {
+		log.Printf("[error] [out_syslog] %v")
+		return output.FLB_ERROR
+	}
+	var tokens map[string]string
+	json_file, err := os.Open(path)
+	if err != nil {
+		log.Printf("[error] [out_syslog] %v", err)
+	}
+	defer json_file.Close()
+	byte_value, _ := ioutil.ReadAll(json_file)
+	if err := json.Unmarshal(byte_value, &tokens); err != nil {
+		log.Println("[error] [out_syslog] Cannot parse tokens config")
 		return output.FLB_ERROR
 	}
 	if protocol == "" {
@@ -51,23 +75,39 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 	address := fmt.Sprintf("%s.data.logs.insight.rapid7.com:443", region)
 	conn, err := tls.Dial(protocol, address, conf)
 	if err != nil {
-		log.Println(err)
+		log.Println("[error] [out_syslog] ", err)
 		return output.FLB_ERROR
 	}
 	retries, err := strconv.Atoi(max_retries)
 	if err != nil {
-		log.Println(err)
+		log.Println("[error] [out_syslog] ", err)
 		return output.FLB_ERROR
 	}
 	connectionId := len(connections)
 	connections = append(connections, &InsightOPSContext{
-		Connection: conn,
-		Token:      []byte(fmt.Sprintf("%s ", token)),
-		Retries:    retries,
+		Connection:  conn,
+		Tokens:      tokens,
+		Retries:     retries,
+		TagPosition: tag_position,
+		TagRegex:    regex,
 	})
 	output.FLBPluginSetContext(plugin, connectionId)
-	log.Printf("[out_insightops] Initializing plugin for region %s", region)
+	log.Printf("[ info] [out_insightops] Initializing plugin for region %s", region)
 	return output.FLB_OK
+}
+
+func wordPositionAtRegex(regex string, word string) (*regexp.Regexp, int, error) {
+	if regex != "" && word != "" {
+		tag_regex := regexp.MustCompile(regex)
+		tokens := tag_regex.SubexpNames()
+		for index, token := range tokens {
+			if word == token {
+				return tag_regex, index, nil
+			}
+		}
+		return nil, -1, fmt.Errorf("Invalid Tag_Key or Tag_Regex parameters. Tag_Regex should contain Tag_Key")
+	}
+	return nil, -1, nil
 }
 
 //export FLBPluginFlushCtx
@@ -75,11 +115,27 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 	var (
 		ret    int
 		record map[interface{}]interface{}
+		buffer bytes.Buffer
 	)
 	connectionId := output.FLBPluginGetContext(ctx).(int)
 	context := connections[connectionId]
 	dec := output.NewDecoder(data, int(length))
+	fluent_tag := C.GoString(tag)
+	fmt.Printf("[ info] [out_insightops] processing records for tag %s", fluent_tag)
+	if context.TagRegex != nil {
+		match := context.TagRegex.FindStringSubmatch(fluent_tag)
+		if match != nil {
+			fluent_tag = match[context.TagPosition]
+			fmt.Printf("[ info] [out_insightops] records for tag %s", fluent_tag)
+		}
+	}
+	token := context.Tokens[fluent_tag]
+	if token == "" {
+		fmt.Printf("[ info] [out_insightops] No logs found for %s tag", fluent_tag)
+		return output.FLB_OK
+	}
 	for {
+		buffer.Reset()
 		ret, _, record = output.GetRecord(dec)
 		if ret != 0 {
 			break
@@ -95,14 +151,16 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 		}
 		data, err := json.Marshal(o)
 		if err != nil {
-			log.Println("Couldn't convert record to JSON: ", err)
+			log.Println("[error] [out_insightops] Couldn't convert record to JSON: ", err)
 		}
 		for retry := 1; retry <= context.Retries; retry++ {
-			message := append((*context).Token, data...)
-			message = append(message, []byte("\r\n")...)
-			_, err := (*context).Connection.Write(message)
+			buffer.WriteString(token)
+			buffer.WriteString(" ")
+			buffer.Write(data)
+			buffer.WriteString("\r\n")
+			_, err := (*context).Connection.Write(buffer.Bytes())
 			if err != nil {
-				log.Printf("Attempt %d: %v", retry, err)
+				log.Printf("[ warn] [out_insightops] Attempt %d: %v", retry, err)
 				continue
 			}
 			break
