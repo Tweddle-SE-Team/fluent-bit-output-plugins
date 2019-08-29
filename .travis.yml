@@ -1,0 +1,25 @@
+dist: trusty
+language: go
+
+go:
+ - 1.12.x
+
+script:
+ - mkdir builds
+ - for plugin in *; do
+      cd $plugin;
+      go get ./...;
+      go build -buildmode=c-shared -o ../builds/out_$plugin.so out_$plugin.go;
+      cd ..;
+   done
+
+deploy:
+  provider: releases
+  file_glob: true
+  file: builds/*
+  skip-cleanup: true
+  api_key:
+    secure: HA2xWsZIQMwOoZt/6FgLuxLDpdtFQVPk0dyMHBo8r1syV8BwLqm5JgkxCGB6ncRPLM4k4zhKc4h+bXTZUBQl0JphsOe8m/DtZQlq13Jl4BpQoMiXG7GPnVPC6SZOZ1UNe51wjb9AgeUZb4qa8Ba01OIQha334lr2iXOP2dXZWKG/UQCbNWOY3kQMi6ZT7fNl5H7SIFL2NeJFVuN1viv4Wj7K1kNW29I+Hu1P8dr/bQqEvjN08amDcVHFbJMLPPCJkgI9L7/1mcnrLTnmiIzbAp7BgJQNtsMUvsSJXen/t3oR/HR7Px2HqG/BGDMI7DchMwfNHNCXj28uCD2FwRCueA3ma1iCy3Wd/u105BBl+8CsmWi9HMKSZ9otgDYT5Se0znchwfcQTe5gq4MBgy/FA/M0G7iNTByne8fOagxialseR0LD8U2AIEDgO1EMPyWxnVJf963blk6ESeLHBKGr1Wm50M9nfetb4hBKA+ANcW8nqzh3OYbjtIPEdSRzPT1pK1DspHxAWoinyjJ0BjRx7E+vr0z6kgIgoTedRGSaCciHFFkeB5gMbiQetlJpsg6p0Lwr7OwivZ9f7a2NQXIhmhU79XVPPlAaxLfmlzn1wHqYb3OhJy6dCBu+iTfghx+SF0QRBlefmDMrsVMOTBqpm+NsYnJjKt7LfzKDfmeFNYU=
+  on:
+    repo: Tweddle-SE-Team/fluent-bit-output-plugins
+    tags: true
