@@ -5,11 +5,11 @@ go:
  - 1.12.x
 
 script:
- - mkdir builds
+ - mkdir /tmp/builds
  - for plugin in *; do
       cd $plugin;
       go get ./...;
-      go build -buildmode=c-shared -o ../builds/out_$plugin.so out_$plugin.go;
+      go /tmp/build -buildmode=c-shared -o /tmp/out_$plugin.so out_$plugin.go;
       cd ..;
    done
 
@@ -19,7 +19,7 @@ deploy:
   file: builds/*
   skip-cleanup: true
   api_key:
-    secure: HA2xWsZIQMwOoZt/6FgLuxLDpdtFQVPk0dyMHBo8r1syV8BwLqm5JgkxCGB6ncRPLM4k4zhKc4h+bXTZUBQl0JphsOe8m/DtZQlq13Jl4BpQoMiXG7GPnVPC6SZOZ1UNe51wjb9AgeUZb4qa8Ba01OIQha334lr2iXOP2dXZWKG/UQCbNWOY3kQMi6ZT7fNl5H7SIFL2NeJFVuN1viv4Wj7K1kNW29I+Hu1P8dr/bQqEvjN08amDcVHFbJMLPPCJkgI9L7/1mcnrLTnmiIzbAp7BgJQNtsMUvsSJXen/t3oR/HR7Px2HqG/BGDMI7DchMwfNHNCXj28uCD2FwRCueA3ma1iCy3Wd/u105BBl+8CsmWi9HMKSZ9otgDYT5Se0znchwfcQTe5gq4MBgy/FA/M0G7iNTByne8fOagxialseR0LD8U2AIEDgO1EMPyWxnVJf963blk6ESeLHBKGr1Wm50M9nfetb4hBKA+ANcW8nqzh3OYbjtIPEdSRzPT1pK1DspHxAWoinyjJ0BjRx7E+vr0z6kgIgoTedRGSaCciHFFkeB5gMbiQetlJpsg6p0Lwr7OwivZ9f7a2NQXIhmhU79XVPPlAaxLfmlzn1wHqYb3OhJy6dCBu+iTfghx+SF0QRBlefmDMrsVMOTBqpm+NsYnJjKt7LfzKDfmeFNYU=
+    secure: fFmn1e2N2SAc2uoH8QgWZvQYPIJbRJ4xqE+ywNF4vIwZDj5e1SJOuIG2B7AlTX5c/QwFDnU7RhrbhM5AAlEh1iLJe45LbQzUyRJsoCJLNig+2ymt2/nWENIMsdM3No/ggNRe7mE6dfcYIKqZS2PeUYMHExDRxfqq5HqSbQ3Kv+Y9ETFcLcOOxyG0918mpc6yjq68vSjuUrARY/BY/H/g0WgB2e6Yhox/kkMoxOOBmurPl8mmsEMa0WtihaO4OCFxpRD1w3X4BGwa/rsvpMZgTw7wG/vs75yqOU04lABGuSo5KawP38B6y3Niynpf0P9CyhcCv+8wO3S2wlQIcSbq9/PkwqFiFiHfsWebtuHBKRqmbEdteq7iyjILUMZrr27NZ6N6pg7GXglI+6B96aNRIgmzs0LFZ/rsjUioEwkksGYSKvT9bmtjRUMt3ngPukP7YyN7sqyBwuWkRY3VaakaYdK68q+G9c9piDBslJRJj8ODn5N9hO/1RRGGQLNVklTjnNKModLruo7SGNoEJR9Mu6O8hFWx2/asyq27xOz5+sS0w+KEadjVhXvvvPfpUh//dO1pWioc7lgDM4xIA2d+bhGjF62VO/n3pKarTGfLeALHeqZzxPhhDMVQmbb9xppwyvar2S06wc/VVhU8ceaMOp7le954N0Y+ger4xfEnZ1k=
   on:
     repo: Tweddle-SE-Team/fluent-bit-output-plugins
     tags: true
