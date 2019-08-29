@@ -72,7 +72,7 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int {
 	var (
 		ret    int
-		record map[string]interface{}
+		record map[interface{}]interface{}
 	)
 	context := (*InsightOPSContext)(ctx)
 	dec := output.NewDecoder(data, int(length))
@@ -81,7 +81,16 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 		if ret != 0 {
 			break
 		}
-		data, err := json.Marshal(record)
+		o := make(map[string]interface{})
+		for k, v := range record {
+			switch t := v.(type) {
+			case []byte:
+				o[k.(string)] = string(t)
+			default:
+				o[k.(string)] = v
+			}
+		}
+		data, err := json.Marshal(o)
 		if err != nil {
 			log.Println("Couldn't convert record to JSON: ", err)
 		}
