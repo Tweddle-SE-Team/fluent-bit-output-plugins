@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/fluent/fluent-bit-go/output"
 	"log"
-	"runtime"
 	"strconv"
 	"unsafe"
 )
@@ -17,6 +16,10 @@ type InsightOPSContext struct {
 	Token      []byte
 	Retries    int
 }
+
+var (
+	connections []*InsightOPSContext
+)
 
 //export FLBPluginRegister
 func FLBPluginRegister(def unsafe.Pointer) int {
@@ -51,19 +54,18 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		log.Println(err)
 		return output.FLB_ERROR
 	}
-	defer conn.Close()
 	retries, err := strconv.Atoi(max_retries)
 	if err != nil {
 		log.Println(err)
 		return output.FLB_ERROR
 	}
-	context := &InsightOPSContext{
+	connectionId := len(connections)
+	connections = append(connections, &InsightOPSContext{
 		Connection: conn,
 		Token:      []byte(fmt.Sprintf("%s ", token)),
 		Retries:    retries,
-	}
-	output.FLBPluginSetContext(plugin, unsafe.Pointer(context))
-	runtime.KeepAlive(conn)
+	})
+	output.FLBPluginSetContext(plugin, connectionId)
 	log.Printf("[out_insightops] Initializing plugin for region %s", region)
 	return output.FLB_OK
 }
@@ -74,7 +76,8 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 		ret    int
 		record map[interface{}]interface{}
 	)
-	context := (*InsightOPSContext)(ctx)
+	connectionId := output.FLBPluginGetContext(ctx).(int)
+	context := connections[connectionId]
 	dec := output.NewDecoder(data, int(length))
 	for {
 		ret, _, record = output.GetRecord(dec)
@@ -94,8 +97,10 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 		if err != nil {
 			log.Println("Couldn't convert record to JSON: ", err)
 		}
-		for retry := 1; retry <= (*context).Retries; retry++ {
-			_, err := (*context).Connection.Write(append((*context).Token, data...))
+		for retry := 1; retry <= context.Retries; retry++ {
+			message := append((*context).Token, data...)
+			message = append(message, []byte("\r\n")...)
+			_, err := (*context).Connection.Write(message)
 			if err != nil {
 				log.Printf("Attempt %d: %v", retry, err)
 				continue
@@ -108,6 +113,9 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 
 //export FLBPluginExit
 func FLBPluginExit() int {
+	for _, context := range connections {
+		defer (*context).Connection.Close()
+	}
 	return output.FLB_OK
 }
 
