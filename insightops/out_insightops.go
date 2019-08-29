@@ -27,7 +27,6 @@ func FLBPluginRegister(def unsafe.Pointer) int {
 //export FLBPluginInit
 func FLBPluginInit(plugin unsafe.Pointer) int {
 	region := output.FLBPluginConfigKey(plugin, "region")
-	port := output.FLBPluginConfigKey(plugin, "port")
 	protocol := output.FLBPluginConfigKey(plugin, "protocol")
 	max_retries := output.FLBPluginConfigKey(plugin, "max_retries")
 	token := output.FLBPluginConfigKey(plugin, "token")
@@ -39,9 +38,6 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		log.Println("[out_syslog] ERROR: Token is required")
 		return output.FLB_ERROR
 	}
-	if port == "" {
-		port = "10000"
-	}
 	if protocol == "" {
 		protocol = "tcp"
 	}
@@ -49,7 +45,7 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		max_retries = "3"
 	}
 	conf := &tls.Config{}
-	address := fmt.Sprintf("%s.data.logs.insight.rapid7.com:%s", region, port)
+	address := fmt.Sprintf("%s.data.logs.insight.rapid7.com:443", region)
 	conn, err := tls.Dial(protocol, address, conf)
 	if err != nil {
 		log.Println(err)
