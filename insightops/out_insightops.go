@@ -72,7 +72,7 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int {
 	var (
 		ret    int
-		record map[interface{}]interface{}
+		record map[string]interface{}
 	)
 	context := (*InsightOPSContext)(ctx)
 	dec := output.NewDecoder(data, int(length))
