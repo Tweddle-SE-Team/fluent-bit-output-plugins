@@ -11,14 +11,12 @@ import (
 	"log"
 	"os"
 	"regexp"
-	"strconv"
 	"unsafe"
 )
 
 type InsightOPSContext struct {
 	Connection  *tls.Conn
 	Tokens      map[string]string
-	Retries     int
 	TagPosition int
 	TagRegex    *regexp.Regexp
 }
@@ -37,7 +35,6 @@ func FLBPluginRegister(def unsafe.Pointer) int {
 func FLBPluginInit(plugin unsafe.Pointer) int {
 	region := output.FLBPluginConfigKey(plugin, "region")
 	protocol := output.FLBPluginConfigKey(plugin, "protocol")
-	max_retries := output.FLBPluginConfigKey(plugin, "max_retries")
 	tag_regex := output.FLBPluginConfigKey(plugin, "tag_regex")
 	tag_key := output.FLBPluginConfigKey(plugin, "tag_key")
 	path := output.FLBPluginConfigKey(plugin, "path")
@@ -45,7 +42,7 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		log.Println("[error] [out_syslog] Region is required")
 		return output.FLB_ERROR
 	}
-	if path == "" {
+	if path == "" && os.Getenv("INSIGHTOPS_TOKENS_JSON") == "" {
 		log.Println("[error] [out_syslog] Tokens config path is required")
 		return output.FLB_ERROR
 	}
@@ -55,21 +52,24 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		return output.FLB_ERROR
 	}
 	var tokens map[string]string
-	json_file, err := os.Open(path)
-	if err != nil {
-		log.Printf("[error] [out_syslog] %v", err)
+	var json_config_data []byte
+	if path != "" {
+		json_file, err := os.Open(path)
+		if err != nil {
+			log.Printf("[error] [out_syslog] %v", err)
+		}
+		defer json_file.Close()
+		json_config_data, _ = ioutil.ReadAll(json_file)
+	} else {
+		json_config_data = []byte(os.Getenv("INSIGHTOPS_TOKENS_JSON"))
 	}
-	defer json_file.Close()
-	byte_value, _ := ioutil.ReadAll(json_file)
-	if err := json.Unmarshal(byte_value, &tokens); err != nil {
+	if err := json.Unmarshal(json_config_data, &tokens); err != nil {
 		log.Println("[error] [out_syslog] Cannot parse tokens config")
 		return output.FLB_ERROR
 	}
+
 	if protocol == "" {
 		protocol = "tcp"
-	}
-	if max_retries == "" {
-		max_retries = "3"
 	}
 	conf := &tls.Config{}
 	address := fmt.Sprintf("%s.data.logs.insight.rapid7.com:443", region)
@@ -78,7 +78,6 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		log.Println("[error] [out_syslog] ", err)
 		return output.FLB_ERROR
 	}
-	retries, err := strconv.Atoi(max_retries)
 	if err != nil {
 		log.Println("[error] [out_syslog] ", err)
 		return output.FLB_ERROR
@@ -87,7 +86,6 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 	connections = append(connections, &InsightOPSContext{
 		Connection:  conn,
 		Tokens:      tokens,
-		Retries:     retries,
 		TagPosition: tag_position,
 		TagRegex:    regex,
 	})
@@ -153,17 +151,14 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 		if err != nil {
 			log.Println("[error] [out_insightops] Couldn't convert record to JSON: ", err)
 		}
-		for retry := 1; retry <= context.Retries; retry++ {
-			buffer.WriteString(token)
-			buffer.WriteString(" ")
-			buffer.Write(data)
-			buffer.WriteString("\r\n")
-			_, err := (*context).Connection.Write(buffer.Bytes())
-			if err != nil {
-				log.Printf("[ warn] [out_insightops] Attempt %d: %v", retry, err)
-				continue
-			}
-			break
+		buffer.WriteString(token)
+		buffer.WriteString(" ")
+		buffer.Write(data)
+		buffer.WriteString("\r\n")
+		_, err = (*context).Connection.Write(buffer.Bytes())
+		if err != nil {
+			log.Printf("[ warn] [out_insightops] Wasn't able to write: %v", err)
+			return output.FLB_RETRY
 		}
 	}
 	return output.FLB_OK
