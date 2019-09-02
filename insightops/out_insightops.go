@@ -167,6 +167,10 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 		if err != nil {
 			log.Printf("[ warn] [out_insightops] Wasn't able to write: %v", err)
 			(*context).Connection, err = connectInsight(context.Protocol, context.Address)
+			if err != nil {
+				log.Printf("[ warn] [out_insightops] Wasn't able to reconnect: %v", err)
+				return output.FLB_ERROR
+			}
 			return output.FLB_RETRY
 		}
 	}
