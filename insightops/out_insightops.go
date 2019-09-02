@@ -19,6 +19,8 @@ type InsightOPSContext struct {
 	Tokens      map[string]string
 	TagPosition int
 	TagRegex    *regexp.Regexp
+	Protocol    string
+	Address     string
 }
 
 var (
@@ -71,9 +73,8 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 	if protocol == "" {
 		protocol = "tcp"
 	}
-	conf := &tls.Config{}
 	address := fmt.Sprintf("%s.data.logs.insight.rapid7.com:443", region)
-	conn, err := tls.Dial(protocol, address, conf)
+	conn, err := connectInsight(protocol, address)
 	if err != nil {
 		log.Println("[error] [out_syslog] ", err)
 		return output.FLB_ERROR
@@ -88,10 +89,17 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		Tokens:      tokens,
 		TagPosition: tag_position,
 		TagRegex:    regex,
+		Address:     address,
+		Protocol:    protocol,
 	})
 	output.FLBPluginSetContext(plugin, connectionId)
 	log.Printf("[ info] [out_insightops] Initializing plugin for region %s", region)
 	return output.FLB_OK
+}
+
+func connectInsight(protocol, address string) (*tls.Conn, error) {
+	conf := &tls.Config{}
+	return tls.Dial(protocol, address, conf)
 }
 
 func wordPositionAtRegex(regex string, word string) (*regexp.Regexp, int, error) {
@@ -158,6 +166,7 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 		_, err = (*context).Connection.Write(buffer.Bytes())
 		if err != nil {
 			log.Printf("[ warn] [out_insightops] Wasn't able to write: %v", err)
+			(*context).Connection, err = connectInsight(context.Protocol, context.Address)
 			return output.FLB_RETRY
 		}
 	}
