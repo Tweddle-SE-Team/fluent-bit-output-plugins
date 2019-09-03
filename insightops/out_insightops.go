@@ -49,7 +49,7 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 	}
 	regex, tag_position, err := wordPositionAtRegex(tag_regex, tag_key)
 	if err != nil {
-		log.Printf("[error] [out_insightops] %v")
+		log.Printf("[error] [out_insightops] %v\n")
 		return output.FLB_ERROR
 	}
 	var tokens map[string]string
@@ -57,7 +57,7 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 	if path != "" {
 		json_file, err := os.Open(path)
 		if err != nil {
-			log.Printf("[error] [out_insightops] %v", err)
+			log.Printf("[error] [out_insightops] %v\n", err)
 		}
 		defer json_file.Close()
 		json_config_data, _ = ioutil.ReadAll(json_file)
@@ -85,7 +85,7 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		Protocol:    protocol,
 	})
 	output.FLBPluginSetContext(plugin, contextId)
-	log.Printf("[ info] [out_insightops] Initializing plugin for region %s", region)
+	log.Printf("[ info] [out_insightops] Initializing plugin for region %s\n", region)
 	return output.FLB_OK
 }
 
@@ -125,17 +125,17 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 	defer connection.Close()
 	dec := output.NewDecoder(data, int(length))
 	fluent_tag := C.GoString(tag)
-	fmt.Printf("[ info] [out_insightops] processing records for tag %s", fluent_tag)
+	fmt.Printf("[ info] [out_insightops] processing records for tag %s\n", fluent_tag)
 	if context.TagRegex != nil {
 		match := context.TagRegex.FindStringSubmatch(fluent_tag)
 		if match != nil {
 			fluent_tag = match[context.TagPosition]
-			fmt.Printf("[ info] [out_insightops] records for tag %s", fluent_tag)
+			fmt.Printf("[ info] [out_insightops] records for tag %s\n", fluent_tag)
 		}
 	}
 	token := context.Tokens[fluent_tag]
 	if token == "" {
-		fmt.Printf("[ info] [out_insightops] No logs found for %s tag", fluent_tag)
+		fmt.Printf("[ info] [out_insightops] No logs found for %s tag\n", fluent_tag)
 		return output.FLB_OK
 	}
 	for {
@@ -163,7 +163,7 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 		buffer.WriteString("\r\n")
 		_, err = connection.Write(buffer.Bytes())
 		if err != nil {
-			log.Printf("[ warn] [out_insightops] Wasn't able to write: %v", err)
+			log.Printf("[ warn] [out_insightops] Wasn't able to write: %v\n", err)
 			return output.FLB_RETRY
 		}
 	}
