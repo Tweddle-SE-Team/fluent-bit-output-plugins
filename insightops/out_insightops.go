@@ -15,7 +15,6 @@ import (
 )
 
 type InsightOPSContext struct {
-	Connection  *tls.Conn
 	Tokens      map[string]string
 	TagPosition int
 	TagRegex    *regexp.Regexp
@@ -24,7 +23,7 @@ type InsightOPSContext struct {
 }
 
 var (
-	connections []*InsightOPSContext
+	contexts []*InsightOPSContext
 )
 
 //export FLBPluginRegister
@@ -41,16 +40,16 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 	tag_key := output.FLBPluginConfigKey(plugin, "tag_key")
 	path := output.FLBPluginConfigKey(plugin, "path")
 	if region == "" {
-		log.Println("[error] [out_syslog] Region is required")
+		log.Println("[error] [out_insightops] Region is required")
 		return output.FLB_ERROR
 	}
 	if path == "" && os.Getenv("INSIGHTOPS_TOKENS_JSON") == "" {
-		log.Println("[error] [out_syslog] Tokens config path is required")
+		log.Println("[error] [out_insightops] Tokens config path is required")
 		return output.FLB_ERROR
 	}
 	regex, tag_position, err := wordPositionAtRegex(tag_regex, tag_key)
 	if err != nil {
-		log.Printf("[error] [out_syslog] %v")
+		log.Printf("[error] [out_insightops] %v")
 		return output.FLB_ERROR
 	}
 	var tokens map[string]string
@@ -58,7 +57,7 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 	if path != "" {
 		json_file, err := os.Open(path)
 		if err != nil {
-			log.Printf("[error] [out_syslog] %v", err)
+			log.Printf("[error] [out_insightops] %v", err)
 		}
 		defer json_file.Close()
 		json_config_data, _ = ioutil.ReadAll(json_file)
@@ -66,33 +65,26 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		json_config_data = []byte(os.Getenv("INSIGHTOPS_TOKENS_JSON"))
 	}
 	if err := json.Unmarshal(json_config_data, &tokens); err != nil {
-		log.Println("[error] [out_syslog] Cannot parse tokens config")
+		log.Println("[error] [out_insightops] Cannot parse tokens config")
 		return output.FLB_ERROR
 	}
-
 	if protocol == "" {
 		protocol = "tcp"
 	}
 	address := fmt.Sprintf("%s.data.logs.insight.rapid7.com:443", region)
-	conn, err := connectInsight(protocol, address)
 	if err != nil {
-		log.Println("[error] [out_syslog] ", err)
+		log.Println("[error] [out_insightops] ", err)
 		return output.FLB_ERROR
 	}
-	if err != nil {
-		log.Println("[error] [out_syslog] ", err)
-		return output.FLB_ERROR
-	}
-	connectionId := len(connections)
-	connections = append(connections, &InsightOPSContext{
-		Connection:  conn,
+	contextId := len(contexts)
+	contexts = append(contexts, &InsightOPSContext{
 		Tokens:      tokens,
 		TagPosition: tag_position,
 		TagRegex:    regex,
 		Address:     address,
 		Protocol:    protocol,
 	})
-	output.FLBPluginSetContext(plugin, connectionId)
+	output.FLBPluginSetContext(plugin, contextId)
 	log.Printf("[ info] [out_insightops] Initializing plugin for region %s", region)
 	return output.FLB_OK
 }
@@ -123,8 +115,14 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 		record map[interface{}]interface{}
 		buffer bytes.Buffer
 	)
-	connectionId := output.FLBPluginGetContext(ctx).(int)
-	context := connections[connectionId]
+	contextId := output.FLBPluginGetContext(ctx).(int)
+	context := contexts[contextId]
+	connection, err := connectInsight(context.Protocol, context.Address)
+	if err != nil {
+		log.Println("[error] [out_insightops] ", err)
+		return output.FLB_ERROR
+	}
+	defer connection.Close()
 	dec := output.NewDecoder(data, int(length))
 	fluent_tag := C.GoString(tag)
 	fmt.Printf("[ info] [out_insightops] processing records for tag %s", fluent_tag)
@@ -163,14 +161,9 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 		buffer.WriteString(" ")
 		buffer.Write(data)
 		buffer.WriteString("\r\n")
-		_, err = (*context).Connection.Write(buffer.Bytes())
+		_, err = connection.Write(buffer.Bytes())
 		if err != nil {
 			log.Printf("[ warn] [out_insightops] Wasn't able to write: %v", err)
-			(*context).Connection, err = connectInsight(context.Protocol, context.Address)
-			if err != nil {
-				log.Printf("[ warn] [out_insightops] Wasn't able to reconnect: %v", err)
-				return output.FLB_ERROR
-			}
 			return output.FLB_RETRY
 		}
 	}
@@ -179,9 +172,6 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 
 //export FLBPluginExit
 func FLBPluginExit() int {
-	for _, context := range connections {
-		defer (*context).Connection.Close()
-	}
 	return output.FLB_OK
 }
 
